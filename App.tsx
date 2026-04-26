@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import {Camera, useCameraDevices} from 'react-native-vision-camera';
 import RNFS from 'react-native-fs';
@@ -20,17 +21,14 @@ if (typeof global.Buffer === 'undefined') {
   (global as any).Buffer = Buffer;
 }
 
-const {width: SCREEN_W, height: SCREEN_H} = Dimensions.get('window');
 const MAX_MARKERS = 20;
-
-const BOX_W = SCREEN_W * 0.85;
-const BOX_H = SCREEN_H * 0.48;
-const BOX_LEFT = (SCREEN_W - BOX_W) / 2;
-const BOX_TOP = (SCREEN_H - BOX_H) / 2;
 
 type Rotation = 0 | 90 | 180 | 270;
 
 export default function App() {
+  const {width: SCREEN_W, height: SCREEN_H} = useWindowDimensions();
+  const isPortrait = SCREEN_H > SCREEN_W;
+
   const devices = useCameraDevices();
   const device = devices.back;
   const cameraRef = useRef<Camera>(null);
@@ -56,6 +54,20 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMsg, setStatusMsg] = useState('Point camera at marker and press Capture');
   const [markerList, setMarkerList] = useState<{uri: string; rot: Rotation}[]>([]);
+
+  const hasGallery = markerList.length > 0 && markerList.length < MAX_MARKERS;
+  const galleryHeight = hasGallery ? 140 : 0;
+  const availH = SCREEN_H - galleryHeight;
+
+  // Dynamic Box Size: ensure it's a square that fits perfectly in available space
+  const boxSize = isPortrait 
+     ? Math.min(SCREEN_W * 0.80, availH * 0.50)
+     : Math.min(SCREEN_W * 0.45, availH * 0.85);
+
+  const BOX_W = boxSize;
+  const BOX_H = boxSize;
+  const BOX_LEFT = (SCREEN_W - BOX_W) / 2;
+  const BOX_TOP = (availH - BOX_H) / 2;
 
   useEffect(() => {
     Camera.requestCameraPermission();
@@ -412,7 +424,6 @@ export default function App() {
     );
   }
 
-  const hasGallery = markerList.length > 0;
 
   return (
     <View style={styles.root}>
@@ -442,22 +453,31 @@ export default function App() {
 
       <Text style={[styles.guide, {top: BOX_TOP + 12}]}>Align marker inside box</Text>
 
-      <Text style={[styles.statusText, {bottom: hasGallery ? 225 : 120}]}>
+      <Text style={[styles.statusText, {bottom: galleryHeight + 100}]}>
         {statusMsg}
       </Text>
 
-      {/* Latest marker preview */}
+      {/* Extracted Preview */}
       {croppedImagePath && (
-        <View style={styles.previewCard}>
+        <View style={[styles.previewCard, {
+           top: isPortrait ? Math.max(20, BOX_TOP - 130) : BOX_TOP,
+           left: isPortrait ? undefined : 20,
+           alignSelf: isPortrait ? 'center' : undefined,
+        }]}>
           <Text style={styles.previewLabel}>Extracted Marker (300×300)</Text>
-          <Image source={{uri: croppedImagePath}} style={styles.previewImg} />
+          <Image source={{uri: `file://${croppedImagePath}`}} style={styles.previewImg} />
         </View>
       )}
 
       {/* Capture button */}
       <TouchableOpacity
         id="captureButton"
-        style={[styles.captureBtn, {bottom: hasGallery ? 150 : 50}]}
+        style={[
+          styles.captureBtn,
+          isPortrait
+            ? { bottom: galleryHeight + 30, alignSelf: 'center' }
+            : { bottom: galleryHeight + 30, right: 30, position: 'absolute' }
+        ]}
         onPress={takePhoto}
         disabled={isProcessing}
         activeOpacity={0.8}>
@@ -564,7 +584,6 @@ const styles = StyleSheet.create({
 
   statusText: {
     position: 'absolute',
-    alignSelf: 'center',
     color: '#ffffff',
     fontSize: 13,
     fontWeight: 'bold',
@@ -573,13 +592,11 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
     textAlign: 'center',
-    maxWidth: SCREEN_W * 0.9,
+    maxWidth: '90%',
   },
 
   previewCard: {
     position: 'absolute',
-    top: Math.max(20, BOX_TOP - 145),
-    alignSelf: 'center',
     backgroundColor: 'rgba(10,10,20,0.88)',
     borderWidth: 1,
     borderColor: '#00ff88',
